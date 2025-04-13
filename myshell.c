@@ -2,19 +2,17 @@
 
 int main()
 {
-    char *line = NULL;
-    size_t len = 0;
-
-   // while (1)
-  //  {
-        tcflush(STDIN_FILENO, TCIFLUSH);
-        printf("interface");
+    while (1)
+    {
+        char *line = NULL;
+        size_t len = 0;
+        printf("$");
         getline(&line, &len, stdin);
+        
         //인터페이스 출력 kseo@user:pwd$
 
         if (strcmp(line, "exit\n") == 0)
-            return 0;
-
+            exit(0);
 
         char command[100][100];
 
@@ -22,11 +20,15 @@ int main()
         int separator[100];
         split_line(line, separator, command); // | = 1 ; = 2 && = 3 || = 4 & = 5 xx : 0
 
+        free(line);
+
+        int tmp_separator;
         int i = 0;
         while(command[i][0] != '\0')
         {
             int ret;
 
+            tmp_separator = separator[i];
             if (separator[i] == 1)
             {
                 int num_of_pipe = 0;
@@ -35,33 +37,44 @@ int main()
 
                 ret  = run_pipe(&command[i], num_of_pipe + 1);
                 i += num_of_pipe;
+                tmp_separator = separator[i];
             }
             else
-            {
                 ret = run_command(command[i], separator[i]);
+            i++;
+    
+            if (tmp_separator == 3 && ret) // &&
+            {
                 i++;
+                break;
             }
-        
-            if (separator[i] == 3 && ret) // &&
+            if (tmp_separator == 4 && !ret) // ||
+            {
+                i++;
                 break;
-            if (separator[i] == 4 && !ret) // ||        
-                break;
+            }
         }
 
- //   }
-
-    
+    }
 }
 
 // 가장 작은 프로세스 작동 단위 , 파이프는 따로 처리
 int run_command(char * cmd, int sep)
 {
-    pid_t pid = fork();
+    if (!strcmp(cmd, "pwd"))
+    {
+        char path[PATH_MAX];
+        int cwd_ret = myshell_pwd(path, sizeof(path));
+        printf("%s\n", path);
+        return (cwd_ret);
+    }
 
     char *argv[100];
     int i = 0;
 
-    char *token = strtok(cmd, " ");
+    char tmp_command[100];
+    strcpy(tmp_command, cmd);
+    char *token = strtok(tmp_command, " ");
     while (token != NULL)
     {
         argv[i++] = token;
@@ -69,10 +82,26 @@ int run_command(char * cmd, int sep)
     }
     argv[i] = NULL;
 
+    if (!strcmp(argv[0], "cd"))
+    {
+        char * dir;
+        char path[PATH_MAX];
+
+        if (argv[1] == NULL)
+            dir = getenv("HOME");
+        else
+            dir = argv[1];
+        
+        int cd_ret = myshell_cd(dir);
+        return (cd_ret);
+    }
+
+    pid_t pid = fork();
+
     if (pid == 0) //child process
     {
         execvp(argv[0], argv);
-        perror("exec fail"); // ||, && 판단 기준
+        perror("exec fail 1"); // ||, && 판단 기준
         //execvp가 정상적으로 실행되었을 경우 다음 줄 실행 x 
         exit(1);
     }
@@ -95,11 +124,14 @@ int run_command(char * cmd, int sep)
 int run_pipe(char (*command)[100], int count)
 {
     int ret;
+    int stdin_copy = dup(STDIN_FILENO);
 
     char *argv[100];
     int i = 0;
 
-    char *token = strtok(command[0], " ");
+    char tmp_command[100];
+    strcpy(tmp_command, command[0]);
+    char *token = strtok(tmp_command, " ");
     while (token != NULL)
     {
         argv[i++] = token;
@@ -109,18 +141,30 @@ int run_pipe(char (*command)[100], int count)
 
     if (count == 1)
     {
+        if (!strcmp(command[0], "pwd"))
+        {
+            char path[PATH_MAX];
+            int cwd_ret = myshell_pwd(path, sizeof(path));
+            printf("my_pwd : %s\n", path);
+            dup2(stdin_copy, STDIN_FILENO);
+            close(stdin_copy);
+            return (cwd_ret);
+        }
+    
         pid_t pid = fork();
         
         if (pid == 0)
         {
             execvp(argv[0], argv);
-            perror("execvp fail");
+            perror("exec fail 2");
             exit(1);
         }
-        else 
+        else
         {
             int status;
             waitpid(pid, &status, 0);
+            dup2(stdin_copy, STDIN_FILENO);
+            close(stdin_copy);
             if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
                 return 0; //성공시 0, 실패시 1;
             return 1;
@@ -140,18 +184,24 @@ int run_pipe(char (*command)[100], int count)
         close(pipefd[1]);
 
         execvp(argv[0], argv);
-        perror("execvp fail");
+        perror("exec fail 3");
         exit(1);
     } 
     else
     {
-        waitpid(pid, NULL, 0);
+        int status;
+        waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+            return 1; // 실패시 1;
 
         close(pipefd[1]); 
         dup2(pipefd[0], STDIN_FILENO);
         close(pipefd[0]);
 
         ret = run_pipe(command + 1, count - 1);
+        
+        dup2(stdin_copy, STDIN_FILENO);
+        close(stdin_copy);
     }
     return ret;
 }
