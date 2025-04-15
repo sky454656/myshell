@@ -9,7 +9,7 @@ int main()
         print_interface();
         getline(&line, &len, stdin);
 
-        
+
         if (strcmp(line, "exit\n") == 0)
             exit(0);
 
@@ -26,12 +26,34 @@ int main()
         while(command[i][0] != '\0')
         {
             int ret;
-
             tmp_separator = separator[i];
-            if (separator[i] == 1)
+
+            int flag = 0;
+            if (separator[i] == 1) //cd 처리
             {
                 int num_of_pipe = 0;
-                while (separator[i + num_of_pipe] == 1 && separator[i + num_of_pipe])
+                while (separator[i + num_of_pipe] == 1)
+                    num_of_pipe++;
+                
+
+                for (int j = i + num_of_pipe ; j >= i; j--)
+                {
+                    if (!strncmp(command[j], "cd ",3))
+                    {
+                        i = j + 1;
+                        flag = 1;
+                        break;
+                    }
+                }
+
+            }
+            if (flag == 1)
+                    continue;
+
+            if (separator[i] == 1) //파이프 처리
+            {
+                int num_of_pipe = 0;
+                while (separator[i + num_of_pipe] == 1)
                     num_of_pipe++;
 
                 ret  = run_pipe(&command[i], num_of_pipe + 1);
@@ -88,6 +110,7 @@ int run_command(char * cmd, int sep)
         int cd_ret = myshell_cd(dir);
         return (cd_ret);
     }
+
     pid_t pid = fork();
 
     if (pid == 0) //child process
@@ -146,14 +169,14 @@ int run_pipe(char (*command)[100], int count)
     if (count == 1)
     {
         pid_t pid = fork();
-        
+
         if (pid == 0)
         {
             if (!strcmp(command[0], "pwd"))
             {
                 char path[PATH_MAX];
                 int cwd_ret = myshell_pwd(path, sizeof(path));
-                printf("my_pwd : %s\n", path);
+                printf("%s\n", path);
                 dup2(stdin_copy, STDIN_FILENO);
                 close(stdin_copy);
                 exit(cwd_ret);
