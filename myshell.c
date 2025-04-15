@@ -6,11 +6,10 @@ int main()
     {
         char *line = NULL;
         size_t len = 0;
-        printf("$");
+        print_interface();
         getline(&line, &len, stdin);
-        
-        //인터페이스 출력 kseo@user:pwd$
 
+        
         if (strcmp(line, "exit\n") == 0)
             exit(0);
 
@@ -61,18 +60,11 @@ int main()
 // 가장 작은 프로세스 작동 단위 , 파이프는 따로 처리
 int run_command(char * cmd, int sep)
 {
-    if (!strcmp(cmd, "pwd"))
-    {
-        char path[PATH_MAX];
-        int cwd_ret = myshell_pwd(path, sizeof(path));
-        printf("%s\n", path);
-        return (cwd_ret);
-    }
-
+    //명령어 파싱
     char *argv[100];
     int i = 0;
-
     char tmp_command[100];
+
     strcpy(tmp_command, cmd);
     char *token = strtok(tmp_command, " ");
     while (token != NULL)
@@ -82,28 +74,38 @@ int run_command(char * cmd, int sep)
     }
     argv[i] = NULL;
 
+    //cd 처리 
     if (!strcmp(argv[0], "cd"))
     {
         char * dir;
         char path[PATH_MAX];
-
+    
         if (argv[1] == NULL)
             dir = getenv("HOME");
         else
             dir = argv[1];
-        
+          
         int cd_ret = myshell_cd(dir);
         return (cd_ret);
     }
-
     pid_t pid = fork();
 
     if (pid == 0) //child process
     {
-        execvp(argv[0], argv);
-        perror("exec fail 1"); // ||, && 판단 기준
-        //execvp가 정상적으로 실행되었을 경우 다음 줄 실행 x 
-        exit(1);
+        if (!strcmp(argv[0], "pwd"))
+        {
+            char path[PATH_MAX];
+            int cwd_ret = myshell_pwd(path, sizeof(path));
+            printf("%s\n", path);
+            exit(cwd_ret);
+        }
+        else
+        {
+            execvp(argv[0], argv);
+            perror("exec fail 1"); // ||, && 판단 기준
+            //execvp가 정상적으로 실행되었을 경우 다음 줄 실행 x 
+            exit(1);
+        }
     }
     else // parent process
     {
@@ -126,10 +128,11 @@ int run_pipe(char (*command)[100], int count)
     int ret;
     int stdin_copy = dup(STDIN_FILENO);
 
+    //명령어 파싱
     char *argv[100];
     int i = 0;
-
     char tmp_command[100];
+
     strcpy(tmp_command, command[0]);
     char *token = strtok(tmp_command, " ");
     while (token != NULL)
@@ -139,22 +142,22 @@ int run_pipe(char (*command)[100], int count)
     }
     argv[i] = NULL;
 
+
     if (count == 1)
     {
-        if (!strcmp(command[0], "pwd"))
-        {
-            char path[PATH_MAX];
-            int cwd_ret = myshell_pwd(path, sizeof(path));
-            printf("my_pwd : %s\n", path);
-            dup2(stdin_copy, STDIN_FILENO);
-            close(stdin_copy);
-            return (cwd_ret);
-        }
-    
         pid_t pid = fork();
         
         if (pid == 0)
         {
+            if (!strcmp(command[0], "pwd"))
+            {
+                char path[PATH_MAX];
+                int cwd_ret = myshell_pwd(path, sizeof(path));
+                printf("my_pwd : %s\n", path);
+                dup2(stdin_copy, STDIN_FILENO);
+                close(stdin_copy);
+                exit(cwd_ret);
+            }
             execvp(argv[0], argv);
             perror("exec fail 2");
             exit(1);
