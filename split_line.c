@@ -1,8 +1,8 @@
 #include "myshell.h"
 
-void split_line(char *line, int *separator, char command[][100])
+void split_line(char *line, int *separator, char command[][256])
 {
-    char tmp[100];
+    char tmp[256];
     int j;
     int k = 0;
     split_separator(line, separator);

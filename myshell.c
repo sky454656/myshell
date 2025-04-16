@@ -13,10 +13,10 @@ int main()
         if (strcmp(line, "exit\n") == 0)
             exit(0);
 
-        char command[100][100];
+        char command[256][256];
 
         memset(command, 0, sizeof(command));
-        int separator[100];
+        int separator[256];
         split_line(line, separator, command); // | = 1 ; = 2 && = 3 || = 4 & = 5 xx : 0
 
         free(line);
@@ -29,26 +29,34 @@ int main()
             tmp_separator = separator[i];
 
             int flag = 0;
-            if (separator[i] == 1) //cd 처리
+
+            if (separator[i] == 1) //파이프에서의 cd 처리
             {
                 int num_of_pipe = 0;
                 while (separator[i + num_of_pipe] == 1)
-                    num_of_pipe++;
-                
+                    num_of_pipe++; 
 
                 for (int j = i + num_of_pipe ; j >= i; j--)
                 {
-                    if (!strncmp(command[j], "cd ",3))
+                    if (!strcmp(command[j], "cd"))
                     {
-                        i = j + 1;
-                        flag = 1;
+                        if (separator[j] == 4)
+                            flag = 2;
+                        else
+                        {
+                            i = j + 1;
+                            flag = 1;
+                        }
+                        
                         break;
-                    }
-                }
+                    }           
+                }    
 
             }
             if (flag == 1)
-                    continue;
+                continue;
+            else if (flag == 2)
+                break;
 
             if (separator[i] == 1) //파이프 처리
             {
@@ -65,15 +73,9 @@ int main()
             i++;
     
             if (tmp_separator == 3 && ret) // &&
-            {
-                i++;
                 break;
-            }
             if (tmp_separator == 4 && !ret) // ||
-            {
-                i++;
                 break;
-            }
         }
 
     }
@@ -83,9 +85,9 @@ int main()
 int run_command(char * cmd, int sep)
 {
     //명령어 파싱
-    char *argv[100];
+    char *argv[256];
     int i = 0;
-    char tmp_command[100];
+    char tmp_command[256];
 
     strcpy(tmp_command, cmd);
     char *token = strtok(tmp_command, " ");
@@ -96,7 +98,22 @@ int run_command(char * cmd, int sep)
     }
     argv[i] = NULL;
 
-    //cd 처리 
+    //cd 예외 처리 
+    // 1) cda 같이 잘못들어온 명령어
+    // 2) 인자 2개이상
+    if (!strncmp(argv[0], "cd", 2) && strcmp(argv[0], "cd") != 0)
+    {
+        printf("command '%s' not found\n", argv[0]);
+        return 1;
+    }
+    if (!strcmp(argv[0], "cd") && argv[2] != NULL)
+    {
+        printf("-bash: cd: too many argumets\n");
+        return 1;
+    }
+
+    //cd 처리
+    //없는 디렉토리로 이동시 처리
     if (!strcmp(argv[0], "cd"))
     {
         char * dir;
@@ -108,6 +125,8 @@ int run_command(char * cmd, int sep)
             dir = argv[1];
           
         int cd_ret = myshell_cd(dir);
+        if(cd_ret)
+            printf("-bash: cd: %s: No such file or directory\n", argv[1]);
         return (cd_ret);
     }
 
@@ -115,7 +134,7 @@ int run_command(char * cmd, int sep)
 
     if (pid == 0) //child process
     {
-        if (!strcmp(argv[0], "pwd"))
+        if (!strcmp(argv[0], "pwd")) //pwd 처리
         {
             char path[PATH_MAX];
             int cwd_ret = myshell_pwd(path, sizeof(path));
@@ -125,7 +144,7 @@ int run_command(char * cmd, int sep)
         else
         {
             execvp(argv[0], argv);
-            perror("exec fail 1"); // ||, && 판단 기준
+            fprintf(stderr, "%s: command not found\n", argv[0]); // ||, && 판단 기준
             //execvp가 정상적으로 실행되었을 경우 다음 줄 실행 x 
             exit(1);
         }
@@ -146,15 +165,15 @@ int run_command(char * cmd, int sep)
 }
 
 
-int run_pipe(char (*command)[100], int count)
+int run_pipe(char (*command)[256], int count)
 {
     int ret;
     int stdin_copy = dup(STDIN_FILENO);
 
     //명령어 파싱
-    char *argv[100];
+    char *argv[256];
     int i = 0;
-    char tmp_command[100];
+    char tmp_command[256];
 
     strcpy(tmp_command, command[0]);
     char *token = strtok(tmp_command, " ");
@@ -182,7 +201,7 @@ int run_pipe(char (*command)[100], int count)
                 exit(cwd_ret);
             }
             execvp(argv[0], argv);
-            perror("exec fail 2");
+            perror("exec fail 1");
             exit(1);
         }
         else
@@ -210,7 +229,7 @@ int run_pipe(char (*command)[100], int count)
         close(pipefd[1]);
 
         execvp(argv[0], argv);
-        perror("exec fail 3");
+        perror("exec fail 2");
         exit(1);
     } 
     else
